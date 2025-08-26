@@ -1,0 +1,1 @@
+import "./globals.css"; export const metadata={title:"B2B Orders",description:"B2B παραγγελίες με Supabase"}; export default function RootLayout({children}:{children:React.ReactNode}){return(<html lang="el"><body>{children}</body></html>);}

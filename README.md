@@ -1,0 +1,1 @@
+# B2B Orders – Admin Forms + PDF (Vercel + Supabase)\n\nSetup:\n1) Supabase: τρέξε `supabase/schema.sql`.\n2) Vercel env vars: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE`.\n3) Admin: `/admin/customers`, `/admin/products`.\n4) PDF: `/api/orders/:id/pdf`.\n

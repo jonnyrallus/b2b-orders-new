@@ -1,0 +1,7 @@
+create table if not exists price_tiers ( code text primary key );
+create table if not exists customers ( id text primary key, name text not null, vat_number text, city text, price_tier text references price_tiers(code) default 'C' );
+create table if not exists products ( id text primary key, sku text unique not null, name text not null, unit text default 'τεμ.', stock_qty integer default 0, active boolean default true );
+create table if not exists product_prices ( product_id text references products(id) on delete cascade, price_tier_code text references price_tiers(code) on delete cascade, price numeric not null, primary key (product_id, price_tier_code) );
+create table if not exists orders ( id bigint generated always as identity primary key, customer_id text references customers(id) not null, notes text, status text default 'submitted', created_at timestamp with time zone default now() );
+create table if not exists order_lines ( id bigint generated always as identity primary key, order_id bigint references orders(id) on delete cascade, product_id text references products(id), qty integer not null, unit_price numeric not null );
+alter table price_tiers enable row level security; alter table customers enable row level security; alter table products enable row level security; alter table product_prices enable row level security; alter table orders enable row level security; alter table order_lines enable row level security;
