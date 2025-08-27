@@ -1,5 +1,13 @@
 import { NextResponse } from 'next/server';
-import { getServerSupabase } from '../../../../lib/supabase';
+import { getServerSupabase } from '../../../../../lib/supabase';
+import PDFDocument from 'pdfkit';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+function euro(n: number) {
+  return new Intl.NumberFormat('el-GR', { style: 'currency', currency: 'EUR' }).format(n);
+}
 
 export async function GET(_: Request, { params }: { params: { id: string } }) {
   const supa = getServerSupabase();
@@ -7,17 +15,73 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
 
   const { data: order, error } = await supa
     .from('orders')
-    .select('id, created_at, notes, status, customer_id, customers(name, vat_number, city, price_tier)')
+    .select('id, created_at, notes, customers(name, vat_number, city)')
     .eq('id', id)
     .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error || !order) return NextResponse.json({ error: error?.message || 'Not found' }, { status: 404 });
 
   const { data: lines, error: e2 } = await supa
     .from('order_lines')
-    .select('product_id, qty, unit_price, products(name, sku, unit)')
+    .select('qty, unit_price, products(name, sku, unit)')
     .eq('order_id', id);
   if (e2) return NextResponse.json({ error: e2.message }, { status: 500 });
 
-  return NextResponse.json({ ...order, lines });
-}
+  const doc = new PDFDocument({ margin: 50 });
+  const chunks: Buffer[] = [];
+  doc.on('data', (c) => chunks.push(c as Buffer));
+  const endPromise = new Promise<Buffer>((res) => doc.on('end', () => res(Buffer.concat(chunks))));
 
+  // Header
+  doc.fontSize(18).text('Παραγγελία', { continued: true }).fontSize(12).text(`   #${order.id}`);
+  doc.moveDown(0.5);
+  doc.fontSize(10).text(`Ημερομηνία: ${new Date(order.created_at).toLocaleString('el-GR')}`);
+  doc.moveDown(0.5);
+  doc.text(`Πελάτης: ${order.customers.name}`);
+  doc.text(`ΑΦΜ: ${order.customers.vat_number || '-'}`);
+  doc.text(`Πόλη: ${order.customers.city || '-'}`);
+  doc.moveDown();
+
+  // Table
+  doc
+    .fontSize(11)
+    .text('Προϊόν', 50, doc.y, { continued: true })
+    .text('SKU', 250, undefined, { continued: true })
+    .text('Ποσ.', 330, undefined, { continued: true })
+    .text('Τιμή', 370, undefined, { continued: true })
+    .text('Σύνολο', 430);
+  doc.moveTo(50, doc.y + 2).lineTo(550, doc.y + 2).strokeColor('#ddd').stroke();
+  doc.moveDown(0.5);
+
+  let net = 0;
+  for (const l of lines || []) {
+    const lineSum = Number(l.qty) * Number(l.unit_price);
+    net += lineSum;
+    doc
+      .fontSize(10)
+      .text(l.products.name, 50, doc.y, { continued: true })
+      .text(l.products.sku, 250, undefined, { continued: true })
+      .text(String(l.qty), 330, undefined, { continued: true })
+      .text(euro(Number(l.unit_price)), 370, undefined, { continued: true })
+      .text(euro(lineSum), 430);
+  }
+  doc.moveDown();
+  const vat = net * 0.24;
+  const gross = net + vat;
+  doc.fontSize(11).text(`Καθαρή αξία: ${euro(net)}`, { align: 'right' });
+  doc.text(`ΦΠΑ 24%: ${euro(vat)}`, { align: 'right' });
+  doc.text(`Σύνολο: ${euro(gross)}`, { align: 'right' });
+  if (order.notes) {
+    doc.moveDown();
+    doc.fontSize(10).text(`Σημειώσεις: ${order.notes}`);
+  }
+  doc.end();
+
+  const buf = await endPromise;
+  return new NextResponse(buf, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="order-${order.id}.pdf"`,
+    },
+  });
+}
