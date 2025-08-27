@@ -1,5 +1,6 @@
 // lib/supabase.ts
-import { createClient } from '@supabase/supabase-js';
+import { getServerSupabase } from '@/lib/supabase';
+
 
 export function getServerSupabase() {
   const url = process.env.SUPABASE_URL as string;
